@@ -1,0 +1,118 @@
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      gateway:
+        condition: service_healthy
+    networks:
+      - edge
+
+  gateway:
+    build:
+      context: ./backend
+      args:
+        SERVICE: gateway
+    restart: unless-stopped
+    environment:
+      META_SERVICE_URL: http://meta-service:8082
+      DRAFT_SERVICE_URL: http://draft-service:8081
+      USER_SERVICE_URL: http://user-service:8083
+    depends_on:
+      meta-service:
+        condition: service_healthy
+      draft-service:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/livez"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - edge
+      - backend
+
+  meta-service:
+    build:
+      context: ./backend
+      args:
+        SERVICE: meta-service
+    restart: unless-stopped
+    environment:
+      OPENDOTA_URL: https://api.opendota.com/api
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8082/livez"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - backend
+
+  draft-service:
+    build:
+      context: ./backend
+      args:
+        SERVICE: draft-service
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8081/livez"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - backend
+
+  user-service:
+    build:
+      context: ./backend
+      args:
+        SERVICE: user-service
+    restart: unless-stopped
+    environment:
+      APP_BASE_URL: ${APP_BASE_URL:-https://localhost}
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
+      STEAM_WEB_API_KEY: ${STEAM_WEB_API_KEY:-}
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8083/livez"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - backend
+
+  migrate:
+    build:
+      context: ./backend
+      args:
+        SERVICE: cmd/migrate
+    restart: "no"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env}
+    networks:
+      - backend
+
+networks:
+  edge:
+  backend:
+
+volumes:
+  caddy_data:
+  caddy_config:

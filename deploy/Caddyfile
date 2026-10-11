@@ -1,0 +1,9 @@
+{$DOMAIN:localhost} {
+    encode zstd gzip
+
+    handle /api/* {
+        reverse_proxy gateway:8080
+    }
+
+    respond "Ancient Analytics API" 200
+}

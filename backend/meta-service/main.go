@@ -1,10 +1,17 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
-	"log"
+	"errors"
+	"fmt"
+	"log/slog"
 	"net/http"
+	"os"
+	"os/signal"
+	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -23,7 +30,6 @@ type HeroStat struct {
 	AncientWin    int      `json:"6_win"`
 }
 
-// ItemStat mapeia os itens do jogo
 type ItemStat struct {
 	ID            int      `json:"id"`
 	Cost          int      `json:"cost"`
@@ -32,130 +38,150 @@ type ItemStat struct {
 	Recipe        int      `json:"recipe"`
 }
 
-// Caches em memória
-var (
-	heroesCache    []HeroStat
-	lastHeroesTime time.Time
-	heroesMutex    sync.RWMutex
-
-	itemsCache    map[string]ItemStat
-	lastItemsTime time.Time
-	itemsMutex    sync.RWMutex
-
-	cacheDuration = 10 * time.Minute
-)
-
-func fetchHeroes() ([]HeroStat, error) {
-	heroesMutex.RLock()
-	if time.Since(lastHeroesTime) < cacheDuration && heroesCache != nil {
-		defer heroesMutex.RUnlock()
-		return heroesCache, nil
-	}
-	heroesMutex.RUnlock()
-
-	heroesMutex.Lock()
-	defer heroesMutex.Unlock()
-
-	if time.Since(lastHeroesTime) < cacheDuration && heroesCache != nil {
-		return heroesCache, nil
-	}
-
-	log.Println("Buscando Heróis na API do OpenDota...")
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get("https://api.opendota.com/api/heroStats")
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	var heroes []HeroStat
-	if err := json.NewDecoder(resp.Body).Decode(&heroes); err != nil {
-		return nil, err
-	}
-
-	heroesCache = heroes
-	lastHeroesTime = time.Now()
-	return heroesCache, nil
+type Config struct {
+	OpenDotaURL string
+	CacheTTL    time.Duration
+	HTTPClient  *http.Client
 }
 
-func fetchItems() (map[string]ItemStat, error) {
-	itemsMutex.RLock()
-	if time.Since(lastItemsTime) < cacheDuration && itemsCache != nil {
-		defer itemsMutex.RUnlock()
-		return itemsCache, nil
-	}
-	itemsMutex.RUnlock()
+type metaService struct {
+	baseURL string
+	ttl     time.Duration
+	client  *http.Client
 
-	itemsMutex.Lock()
-	defer itemsMutex.Unlock()
-
-	if time.Since(lastItemsTime) < cacheDuration && itemsCache != nil {
-		return itemsCache, nil
-	}
-
-	log.Println("Buscando Itens na API do OpenDota...")
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get("https://api.opendota.com/api/constants/items")
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	var items map[string]ItemStat
-	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
-		return nil, err
-	}
-
-	itemsCache = items
-	lastItemsTime = time.Now()
-	return itemsCache, nil
+	heroesMu        sync.RWMutex
+	heroes          []HeroStat
+	heroesUpdatedAt time.Time
+	itemsMu         sync.RWMutex
+	items           map[string]ItemStat
+	itemsUpdatedAt  time.Time
 }
 
-func iniciarHeartbeatPush() {
-	ticker := time.NewTicker(5 * time.Second)
-	gatewayURL := "http://localhost:8080/internal/heartbeat/meta"
-
-	log.Println("[Heartbeat] Iniciando envio de pings HTTP para o Gateway...")
-	client := &http.Client{Timeout: 2 * time.Second}
-
-	go func() {
-		for range ticker.C {
-			req, err := http.NewRequest(http.MethodPost, gatewayURL, nil)
-			if err == nil {
-				resp, err := client.Do(req)
-				if err == nil {
-					resp.Body.Close()
-				}
-			}
+func NewHandler(config Config) http.Handler {
+	if config.OpenDotaURL == "" {
+		config.OpenDotaURL = "https://api.opendota.com/api"
+	}
+	if config.CacheTTL <= 0 {
+		config.CacheTTL = 10 * time.Minute
+	}
+	if config.HTTPClient == nil {
+		config.HTTPClient = &http.Client{Timeout: 10 * time.Second}
+	}
+	service := &metaService{baseURL: strings.TrimRight(config.OpenDotaURL, "/"), ttl: config.CacheTTL, client: config.HTTPClient}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /livez", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	})
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+	})
+	mux.HandleFunc("GET /api/meta/heroes", func(w http.ResponseWriter, r *http.Request) {
+		heroes, err := service.fetchHeroes(r.Context())
+		if err != nil {
+			writeError(w, http.StatusBadGateway, "UPSTREAM_UNAVAILABLE", "could not retrieve hero data")
+			return
 		}
-	}()
+		writeJSON(w, http.StatusOK, heroes)
+	})
+	mux.HandleFunc("GET /api/meta/items", func(w http.ResponseWriter, r *http.Request) {
+		items, err := service.fetchItems(r.Context())
+		if err != nil {
+			writeError(w, http.StatusBadGateway, "UPSTREAM_UNAVAILABLE", "could not retrieve item data")
+			return
+		}
+		writeJSON(w, http.StatusOK, items)
+	})
+	return mux
+}
+
+func (s *metaService) fetchHeroes(ctx context.Context) ([]HeroStat, error) {
+	s.heroesMu.RLock()
+	if s.heroes != nil && time.Since(s.heroesUpdatedAt) < s.ttl {
+		defer s.heroesMu.RUnlock()
+		return s.heroes, nil
+	}
+	s.heroesMu.RUnlock()
+
+	s.heroesMu.Lock()
+	defer s.heroesMu.Unlock()
+	if s.heroes != nil && time.Since(s.heroesUpdatedAt) < s.ttl {
+		return s.heroes, nil
+	}
+	var heroes []HeroStat
+	if err := s.getJSON(ctx, "/heroStats", &heroes); err != nil {
+		return nil, err
+	}
+	s.heroes, s.heroesUpdatedAt = heroes, time.Now()
+	return s.heroes, nil
+}
+
+func (s *metaService) fetchItems(ctx context.Context) (map[string]ItemStat, error) {
+	s.itemsMu.RLock()
+	if s.items != nil && time.Since(s.itemsUpdatedAt) < s.ttl {
+		defer s.itemsMu.RUnlock()
+		return s.items, nil
+	}
+	s.itemsMu.RUnlock()
+
+	s.itemsMu.Lock()
+	defer s.itemsMu.Unlock()
+	if s.items != nil && time.Since(s.itemsUpdatedAt) < s.ttl {
+		return s.items, nil
+	}
+	var items map[string]ItemStat
+	if err := s.getJSON(ctx, "/constants/items", &items); err != nil {
+		return nil, err
+	}
+	s.items, s.itemsUpdatedAt = items, time.Now()
+	return s.items, nil
+}
+
+func (s *metaService) getJSON(ctx context.Context, path string, output any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.baseURL+path, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("opendota returned status %d", resp.StatusCode)
+	}
+	return json.NewDecoder(resp.Body).Decode(output)
+}
+
+func writeJSON(w http.ResponseWriter, status int, value any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(value)
+}
+
+func writeError(w http.ResponseWriter, status int, code, message string) {
+	writeJSON(w, status, map[string]any{"error": map[string]string{"code": code, "message": message}})
 }
 
 func main() {
-	iniciarHeartbeatPush()
-
-	// Rota para todos os HERÓIS
-	http.HandleFunc("/api/meta/heroes", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		stats, err := fetchHeroes()
-		if err != nil {
-			http.Error(w, `{"erro": "Falha ao buscar heróis"}`, http.StatusInternalServerError)
-			return
+	port := strings.TrimSpace(os.Getenv("PORT"))
+	if port == "" {
+		port = "8082"
+	}
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	server := &http.Server{Addr: ":" + port, Handler: NewHandler(Config{OpenDotaURL: os.Getenv("OPENDOTA_URL")}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second}
+	go func() {
+		logger.Info("meta service started", "addr", server.Addr)
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("meta service stopped unexpectedly", "error", err)
+			os.Exit(1)
 		}
-		json.NewEncoder(w).Encode(stats)
-	})
-
-	// Rota para todos os ITENS
-	http.HandleFunc("/api/meta/items", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		items, err := fetchItems()
-		if err != nil {
-			http.Error(w, `{"erro": "Falha ao buscar itens"}`, http.StatusInternalServerError)
-			return
-		}
-		json.NewEncoder(w).Encode(items)
-	})
-
-	log.Println("Meta Service do Ancient Analytics rodando na porta 8082...")
-	log.Fatal(http.ListenAndServe(":8082", nil))
+	}()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	<-ctx.Done()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		logger.Error("meta service shutdown failed", "error", err)
+	}
 }

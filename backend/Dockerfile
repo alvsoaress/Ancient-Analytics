@@ -1,23 +1,21 @@
-FROM golang:1.21-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
-WORKDIR /app
+WORKDIR /src
 
-COPY go.mod go.sum* ./
-
+COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o servico-binario .
+ARG SERVICE
+RUN test -n "$SERVICE" && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/service "./${SERVICE}"
 
-FROM alpine:latest
+FROM alpine:3.22
 
 RUN apk --no-cache add ca-certificates
 
-WORKDIR /root/
+WORKDIR /app
+COPY --from=builder /out/service ./service
 
-COPY --from=builder /app/servico-binario .
-
-EXPOSE 8082
-
-CMD ["./servico-binario"]
+USER 65532:65532
+ENTRYPOINT ["./service"]
