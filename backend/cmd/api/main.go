@@ -5,10 +5,12 @@ import (
 	"net/http"
 
 	"github.com/alvsoaress/ancient-analytics-backend/internal/api"
+	"github.com/alvsoaress/ancient-analytics-backend/internal/opendota"
 )
 
 func main() {
-	handler := api.NewHandler()
+	client := opendota.NewClient()
+	handler := api.NewHandler(client)
 
 	log.Println("API disponível em http://127.0.0.1:8080")
 
