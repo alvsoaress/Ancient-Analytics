@@ -2,12 +2,18 @@ package opendota
 
 import (
 	"net/http"
+	"sync"
 	"time"
 )
 
 type Client struct {
 	baseURL    string
 	httpClient *http.Client
+
+	heroesMu        sync.Mutex
+	heroesCache     []Hero
+	heroesExpiresAt time.Time
+	cacheTTL        time.Duration
 }
 
 func NewClient() *Client {
@@ -16,5 +22,6 @@ func NewClient() *Client {
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
+		cacheTTL: 5 * time.Minute,
 	}
 }

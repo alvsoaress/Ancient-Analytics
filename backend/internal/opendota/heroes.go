@@ -5,14 +5,27 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
+	"time"
 )
 
 type Hero struct {
-	ID            int    `json:"id"`
-	LocalizedName string `json:"localized_name"`
+	ID            int      `json:"id"`
+	LocalizedName string   `json:"localized_name"`
+	PrimaryAttr   string   `json:"primary_attr"`
+	AttackType    string   `json:"attack_type"`
+	Roles         []string `json:"roles"`
 }
 
 func (c *Client) Heroes(ctx context.Context) ([]Hero, error) {
+	c.heroesMu.Lock()
+	defer c.heroesMu.Unlock()
+
+	if c.heroesCache != nil &&
+		time.Now().Before(c.heroesExpiresAt) {
+		return slices.Clone(c.heroesCache), nil
+	}
+
 	request, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodGet,
@@ -42,5 +55,23 @@ func (c *Client) Heroes(ctx context.Context) ([]Hero, error) {
 		return nil, fmt.Errorf("interpretar resposta de heróis: %w", err)
 	}
 
-	return heroes, nil
+	if c.heroesCache != nil &&
+		time.Now().Before(c.heroesExpiresAt) {
+		return cloneHeroes(c.heroesCache), nil
+	}
+
+	c.heroesCache = heroes
+	c.heroesExpiresAt = time.Now().Add(c.cacheTTL)
+
+	return cloneHeroes(c.heroesCache), nil
+}
+
+func cloneHeroes(heroes []Hero) []Hero {
+	cloned := slices.Clone(heroes)
+
+	for i := range cloned {
+		cloned[i].Roles = slices.Clone(cloned[i].Roles)
+	}
+
+	return cloned
 }
