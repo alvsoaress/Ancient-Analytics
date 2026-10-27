@@ -47,6 +47,7 @@ func NewHandler(client HeroesClient, metaService MetaService, playersService Pla
 
 	mux.HandleFunc("GET /api/meta/heroes", metaHeroes(metaService))
 	mux.HandleFunc("GET /api/players/{accountId}", playerProfile(playersService))
+	mux.HandleFunc("GET /api/players/{accountId}/matches", playerMatches(playersService))
 
 	return mux
 }

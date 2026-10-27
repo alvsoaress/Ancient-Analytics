@@ -12,6 +12,7 @@ import (
 
 type PlayersService interface {
 	Profile(ctx context.Context, accountID uint32) (players.Profile, error)
+	Matches(ctx context.Context, accountID uint32, limit, offset int) (players.MatchHistory, error)
 }
 
 func playerProfile(service PlayersService) http.HandlerFunc {

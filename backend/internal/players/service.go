@@ -17,6 +17,7 @@ var (
 
 type PlayerClient interface {
 	Player(ctx context.Context, accountID uint32) (opendota.PlayerData, error)
+	PlayerMatches(ctx context.Context, accountID uint32, limit, offset int) ([]opendota.PlayerMatch, error)
 }
 
 type Profile struct {

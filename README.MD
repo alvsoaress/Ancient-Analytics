@@ -4,7 +4,7 @@ Aplicação web local para consultar estatísticas de Dota 2 por meio de APIs ex
 
 ## Escopo
 
-A primeira versão terá meta, heróis, jogadores e partidas, com consulta pública. Personalização fica para depois. O backend já consulta o catálogo de heróis, estatísticas de meta e o perfil público de jogadores. Histórico de partidas e demais consultas de partidas seguem planejados.
+A primeira versão terá meta, heróis, jogadores e partidas, com consulta pública. Personalização fica para depois. O backend já consulta o catálogo de heróis, estatísticas de meta e o perfil público de jogadores. O histórico de partidas por jogador também está disponível, com paginação. Os detalhes completos de cada partida seguem planejados.
 
 ## Arquitetura
 
@@ -124,6 +124,59 @@ Perfis consultados com sucesso ficam em memória por cinco minutos, com até 128
 
 Referência: [consulta de jogadores na OpenDota](https://docs.opendota.com/#tag/players).
 
+### Histórico de partidas do jogador
+
+`GET /api/players/{accountId}/matches` consulta o histórico público disponível na OpenDota, sem exigir login ou consultar previamente o perfil.
+
+```bash
+# Primeira página: até 20 partidas
+curl 'http://127.0.0.1:8080/api/players/86745912/matches?limit=20&offset=0'
+
+# Próxima página
+curl 'http://127.0.0.1:8080/api/players/86745912/matches?limit=20&offset=20'
+```
+
+`limit` é a quantidade máxima de partidas da página: padrão 20, de 1 a 100. `offset` é quantas partidas pular: padrão 0, de 0 a 2147483546. Parâmetros vazios, repetidos, negativos, não inteiros ou fora desses limites retornam HTTP `400`, antes de acessar a fonte. Os códigos são `INVALID_ACCOUNT_ID`, `INVALID_LIMIT` e `INVALID_OFFSET`; uma query malformada retorna `INVALID_PAGINATION`.
+
+A resposta usa este formato (exemplo ilustrativo):
+
+```json
+{
+  "accountId": 86745912,
+  "matches": [
+    {
+      "matchId": 9025128045,
+      "heroId": 53,
+      "won": true,
+      "durationSeconds": 2375,
+      "startTime": 1790890789,
+      "kills": 13,
+      "deaths": 2,
+      "assists": 16,
+      "gameMode": 22,
+      "lobbyType": 7
+    }
+  ],
+  "pagination": {
+    "limit": 1,
+    "offset": 0,
+    "count": 1,
+    "hasMore": true,
+    "nextOffset": 1
+  }
+}
+```
+
+As partidas seguem a ordem decrescente de `matchId` fornecida pela OpenDota. A consulta inclui os modos disponíveis na fonte usando `significant=0`. `heroId`, `gameMode` e `lobbyType` são os identificadores da fonte; `startTime` é um instante Unix em segundos, e `durationSeconds` é a duração em segundos. `won` indica o resultado do jogador, combinando seu time com o time vencedor. Campos ausentes permanecem `null`, inclusive o resultado quando não há dados suficientes; zero abates continua sendo zero. Herói zero é tratado como indisponível.
+
+Cada página faz **uma chamada externa**, pedindo até `limit + 1` partidas: a partida extra só informa `hasMore` e não aparece na lista. Para avançar, mantenha `limit` e use `nextOffset`. Na última página, `hasMore` é `false` e `nextOffset` é `null`, mesmo quando a quantidade de partidas é exatamente igual ao limite. Não é feita uma consulta adicional para contar o histórico inteiro.
+
+Quando a fonte retorna uma lista vazia, a API responde HTTP `200`, `matches: []`, `count: 0` e encerra a paginação. Isso não distingue uma conta sem partidas de uma conta sem histórico público disponível. Falhas HTTP da fonte, timeout ou resposta inválida retornam HTTP `502`, `UPSTREAM_UNAVAILABLE`, sem substituir o erro por uma lista vazia.
+
+Nesta etapa, o histórico é consultado diretamente, sem cache próprio ou banco. A paginação por deslocamento reflete os dados disponíveis em cada consulta: se novas partidas aparecerem entre páginas, podem ocorrer repetições ou mudanças de posição. Não é um retrato fixo do histórico completo.
+
+Referências: [parâmetros de paginação e ordenação](https://github.com/odota/core/blob/master/svc/api/requests/playerParams.ts) e [campos do histórico](https://github.com/odota/core/blob/master/svc/api/responses/PlayerMatchesResponse.ts).
+
 Para executar os testes e as verificações estáticas:
 
 ```bash
@@ -140,7 +193,7 @@ backend/
 ├── internal/api/         # Rotas, validação HTTP e respostas JSON
 ├── internal/meta/        # Cálculos, filtros e ordenação de desempenho
 ├── internal/opendota/    # Consulta à fonte externa e caches em memória
-├── internal/players/     # Perfil público e tratamento de dados opcionais
+├── internal/players/     # Perfil, histórico paginado e dados opcionais
 └── go.mod
 ```
 
