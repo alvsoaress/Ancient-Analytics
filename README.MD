@@ -8,7 +8,7 @@ A primeira versão terá meta, heróis, jogadores e partidas, com consulta públ
 
 ## Arquitetura
 
-- Frontend: React, TypeScript e Vite. Atualmente contém a tela inicial do Vite.
+- Frontend: React, TypeScript e Vite. Página em azul aço com meta profissional e catálogo de heróis consumindo a API local, com retratos oficiais.
 - Backend: monólito modular em Go, usando a biblioteca padrão.
 - Integração: OpenDota, acessada pelo backend com cache em memória.
 - Persistência: será adicionada quando houver dados próprios a guardar. O backend inicial não depende de banco nem Docker.
@@ -53,6 +53,12 @@ curl 'http://127.0.0.1:8080/api/meta/heroes?minPicks=10&sortBy=picks'
 Empates são resolvidos pelo menor ID do herói. Na ordenação por taxa, valores indisponíveis (`null`) ficam no final, depois de taxas iguais a zero.
 Sem `sortBy`, ou com o valor vazio, a consulta preserva a ordem dos dados recebidos. Critérios desconhecidos ou repetidos retornam HTTP `400` com código `INVALID_SORT_BY`, antes de consultar o serviço.
 O filtro e a ordenação são aplicados aos resultados da consulta, sem alterar as estatísticas guardadas no cache.
+
+Cada herói contém `heroId`, `name`, `picks`, `wins`, `winRate`, `pickRate` e `kda`:
+
+- `winRate`: vitórias ÷ escolhas, em porcentagem; `null` sem escolhas.
+- `pickRate`: porcentagem de partidas em que o herói foi escolhido. Sem `position`, a OpenDota não informa o total de partidas profissionais; ele é **estimado** como a soma das escolhas de todos os heróis dividida por dez (dez escolhas por partida), antes do filtro `minPicks`. Com `position`, usa o número exato de partidas incluídas na amostra. `null` quando não há partidas.
+- `kda`: (abates + assistências) ÷ mortes, somados nas escolhas da amostra por posição; sem mortes, divide por 1. Sem `position`, é sempre `null`, pois `/heroStats` não fornece abates, mortes e assistências.
 
 ### Desempenho por posição
 
@@ -231,4 +237,4 @@ npm install
 npm run dev
 ```
 
-O frontend ainda não está conectado ao backend.
+As seis etapas do frontend estão implementadas: página responsiva, meta profissional com filtro por posição e ordenação, catálogo completo de heróis com busca e filtro por atributo, consulta do perfil público de jogadores por ID de amigo, SteamID64 ou link de perfil, histórico paginado de partidas e detalhes de cada partida, com times e desempenho por jogador, com revisão de carregamento, erros, acessibilidade e responsividade. Os dados vêm do backend, que precisa estar em execução; o Vite repassa `/api` para `http://127.0.0.1:8080`. `GET /api/heroes` inclui o nome interno de cada herói (`name`, como `npc_dota_hero_antimage`), usado para localizar o retrato oficial. O plano das próximas etapas e a organização dos componentes estão em [frontend/README.md](frontend/README.md).
