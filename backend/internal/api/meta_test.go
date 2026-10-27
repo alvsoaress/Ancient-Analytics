@@ -12,15 +12,103 @@ import (
 )
 
 type fakeMetaService struct {
-	heroes []meta.HeroPerformance
-	err    error
+	heroes           []meta.HeroPerformance
+	err              error
+	receivedMinPicks *int
 }
 
 func (f fakeMetaService) Heroes(
 	ctx context.Context,
 	minPicks int,
 ) ([]meta.HeroPerformance, error) {
+	if f.receivedMinPicks != nil {
+		*f.receivedMinPicks = minPicks
+	}
 	return f.heroes, f.err
+}
+
+func TestMetaHeroesPassesMinPicks(t *testing.T) {
+	tests := []struct {
+		name string
+		url  string
+		want int
+	}{
+		{name: "sem_parametro", url: "/api/meta/heroes", want: 0},
+		{name: "minimo_dez", url: "/api/meta/heroes?minPicks=10", want: 10},
+		{name: "zero_explicito", url: "/api/meta/heroes?minPicks=0", want: 0},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			receivedMinPicks := -1
+			service := fakeMetaService{
+				heroes:           []meta.HeroPerformance{},
+				receivedMinPicks: &receivedMinPicks,
+			}
+			handler := NewHandler(fakeHeroesClient{}, service)
+			request := httptest.NewRequest(http.MethodGet, test.url, nil)
+			response := httptest.NewRecorder()
+
+			handler.ServeHTTP(response, request)
+
+			if response.Code != http.StatusOK {
+				t.Fatalf("status recebido: %d; esperado: 200", response.Code)
+			}
+			if receivedMinPicks != test.want {
+				t.Errorf("mínimo recebido pelo serviço: %d; esperado: %d", receivedMinPicks, test.want)
+			}
+		})
+	}
+}
+
+func TestMetaHeroesRejectsInvalidMinPicks(t *testing.T) {
+	tests := []struct {
+		name  string
+		query string
+	}{
+		{name: "negativo", query: "minPicks=-1"},
+		{name: "texto", query: "minPicks=abc"},
+		{name: "decimal", query: "minPicks=1.5"},
+		{name: "vazio", query: "minPicks="},
+		{name: "sem_valor", query: "minPicks"},
+		{name: "fora_do_limite_de_int", query: "minPicks=999999999999999999999999999999"},
+		{name: "repetido", query: "minPicks=10&minPicks=20"},
+		{name: "codificacao_invalida", query: "minPicks=%ZZ"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			receivedMinPicks := -1
+			service := fakeMetaService{receivedMinPicks: &receivedMinPicks}
+			handler := NewHandler(fakeHeroesClient{}, service)
+			request := httptest.NewRequest(http.MethodGet, "/api/meta/heroes?"+test.query, nil)
+			response := httptest.NewRecorder()
+
+			handler.ServeHTTP(response, request)
+
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("status recebido: %d; esperado: 400", response.Code)
+			}
+			if response.Header().Get("Content-Type") != "application/json" {
+				t.Error("a resposta deveria ter Content-Type application/json")
+			}
+			if receivedMinPicks != -1 {
+				t.Error("o serviço não deveria ser chamado para um parâmetro inválido")
+			}
+			var body struct {
+				Error struct {
+					Code    string `json:"code"`
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+				t.Fatalf("resposta JSON inválida: %v", err)
+			}
+			if body.Error.Code != "INVALID_MIN_PICKS" || body.Error.Message != "minPicks deve ser um único número inteiro maior ou igual a zero." {
+				t.Errorf("erro inesperado: %+v", body.Error)
+			}
+		})
+	}
 }
 
 func TestMetaHeroes(t *testing.T) {

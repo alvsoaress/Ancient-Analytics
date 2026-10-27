@@ -31,6 +31,18 @@ curl http://127.0.0.1:8080/api/health
 
 Resposta: `{"status":"ok"}`. Essa rota verifica apenas se o servidor responde, sem consultar serviços externos.
 
+### Estatísticas profissionais dos heróis
+
+`GET /api/meta/heroes` retorna as estatísticas com `scope: "professional"`.
+O parâmetro opcional `minPicks` inclui apenas heróis com quantidade de escolhas maior ou igual ao mínimo informado:
+
+```bash
+curl 'http://127.0.0.1:8080/api/meta/heroes?minPicks=10'
+```
+
+Sem o parâmetro, ou com `minPicks=0`, a consulta mantém todos os resultados.
+Valores negativos, vazios, não inteiros, repetidos ou fora do limite de `int` retornam HTTP `400` com código `INVALID_MIN_PICKS`, antes de consultar o serviço.
+
 Para executar os testes e as verificações estáticas:
 
 ```bash

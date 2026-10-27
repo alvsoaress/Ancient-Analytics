@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
+	"strconv"
 
 	"github.com/alvsoaress/ancient-analytics-backend/internal/meta"
 )
@@ -22,9 +24,26 @@ type metaHeroesResponse struct {
 
 func metaHeroes(service MetaService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		heroes, err := service.Heroes(r.Context(), 0)
-
 		w.Header().Set("Content-Type", "application/json")
+
+		query, err := url.ParseQuery(r.URL.RawQuery)
+		minPicks := 0
+		values, provided := query["minPicks"]
+		if err == nil && provided && len(values) == 1 {
+			minPicks, err = strconv.Atoi(values[0])
+		}
+		if err != nil || (provided && len(values) != 1) || minPicks < 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"error": map[string]string{
+					"code":    "INVALID_MIN_PICKS",
+					"message": "minPicks deve ser um único número inteiro maior ou igual a zero.",
+				},
+			})
+			return
+		}
+
+		heroes, err := service.Heroes(r.Context(), minPicks)
 
 		if err != nil {
 			w.WriteHeader(http.StatusBadGateway)
