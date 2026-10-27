@@ -44,7 +44,7 @@ func (positionAPIClient) HeroPositionStats(context.Context) (opendota.PositionSn
 }
 
 func TestMetaHeroesPositionQueries(t *testing.T) {
-	handler := NewHandler(fakeHeroesClient{}, meta.NewService(positionAPIClient{}))
+	handler := NewHandler(fakeHeroesClient{}, meta.NewService(positionAPIClient{}), fakePlayersService{})
 	for _, value := range []string{"carry", "mid", "offlane", "support4", "support5"} {
 		t.Run(value, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodGet, "/api/meta/heroes?position="+value+"&minPicks=2&sortBy=winRate", nil)
@@ -80,7 +80,7 @@ func TestMetaHeroesRejectsInvalidPosition(t *testing.T) {
 	for _, query := range []string{"position=", "position=jungle", "position=3", "position=offlane&position=mid"} {
 		t.Run(query, func(t *testing.T) {
 			called := -1
-			handler := NewHandler(fakeHeroesClient{}, fakeMetaService{receivedMinPicks: &called})
+			handler := NewHandler(fakeHeroesClient{}, fakeMetaService{receivedMinPicks: &called}, fakePlayersService{})
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/meta/heroes?"+query, nil))
 			var body struct {
@@ -99,7 +99,7 @@ func TestMetaHeroesRejectsInvalidPosition(t *testing.T) {
 }
 
 func TestMetaHeroesPositionSourceUnavailable(t *testing.T) {
-	handler := NewHandler(fakeHeroesClient{}, fakeMetaService{err: errors.New("sem partidas com posições")})
+	handler := NewHandler(fakeHeroesClient{}, fakeMetaService{err: errors.New("sem partidas com posições")}, fakePlayersService{})
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/meta/heroes?position=offlane", nil))
 	var body struct {

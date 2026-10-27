@@ -19,6 +19,8 @@ type Client struct {
 	positionsMu        sync.Mutex
 	positionsCache     *PositionSnapshot
 	positionsExpiresAt time.Time
+	playersMu          sync.Mutex
+	playersCache       map[uint32]playerCacheEntry
 }
 
 func NewClient() *Client {

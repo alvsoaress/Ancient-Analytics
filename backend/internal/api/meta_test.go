@@ -48,7 +48,7 @@ func TestMetaHeroesFiltersAndSorts(t *testing.T) {
 			{ID: 6, LocalizedName: "Small sample", ProPick: 9, ProWin: 9},
 		},
 	}
-	handler := NewHandler(fakeHeroesClient{}, meta.NewService(client))
+	handler := NewHandler(fakeHeroesClient{}, meta.NewService(client), fakePlayersService{})
 	tests := []struct {
 		name    string
 		query   string
@@ -104,7 +104,7 @@ func TestMetaHeroesRejectsInvalidSortBy(t *testing.T) {
 	} {
 		t.Run(query, func(t *testing.T) {
 			receivedMinPicks := -1
-			handler := NewHandler(fakeHeroesClient{}, fakeMetaService{receivedMinPicks: &receivedMinPicks})
+			handler := NewHandler(fakeHeroesClient{}, fakeMetaService{receivedMinPicks: &receivedMinPicks}, fakePlayersService{})
 			request := httptest.NewRequest(http.MethodGet, "/api/meta/heroes?"+query, nil)
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, request)
@@ -151,7 +151,7 @@ func TestMetaHeroesPassesMinPicks(t *testing.T) {
 				heroes:           []meta.HeroPerformance{},
 				receivedMinPicks: &receivedMinPicks,
 			}
-			handler := NewHandler(fakeHeroesClient{}, service)
+			handler := NewHandler(fakeHeroesClient{}, service, fakePlayersService{})
 			request := httptest.NewRequest(http.MethodGet, test.url, nil)
 			response := httptest.NewRecorder()
 
@@ -186,7 +186,7 @@ func TestMetaHeroesRejectsInvalidMinPicks(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			receivedMinPicks := -1
 			service := fakeMetaService{receivedMinPicks: &receivedMinPicks}
-			handler := NewHandler(fakeHeroesClient{}, service)
+			handler := NewHandler(fakeHeroesClient{}, service, fakePlayersService{})
 			request := httptest.NewRequest(http.MethodGet, "/api/meta/heroes?"+test.query, nil)
 			response := httptest.NewRecorder()
 
@@ -239,7 +239,7 @@ func TestMetaHeroes(t *testing.T) {
 	)
 	response := httptest.NewRecorder()
 
-	handler := NewHandler(fakeHeroesClient{}, service)
+	handler := NewHandler(fakeHeroesClient{}, service, fakePlayersService{})
 	handler.ServeHTTP(response, request)
 
 	if response.Code != http.StatusOK {
@@ -303,7 +303,7 @@ func TestMetaHeroesReturnsBadGateway(t *testing.T) {
 		err: errors.New("falha ao consultar o provedor"),
 	}
 
-	handler := NewHandler(fakeHeroesClient{}, service)
+	handler := NewHandler(fakeHeroesClient{}, service, fakePlayersService{})
 
 	request := httptest.NewRequest(
 		http.MethodGet,
@@ -358,7 +358,7 @@ func TestMetaHeroesWithoutPicksReturnsNullRate(t *testing.T) {
 		},
 	}
 
-	handler := NewHandler(fakeHeroesClient{}, service)
+	handler := NewHandler(fakeHeroesClient{}, service, fakePlayersService{})
 
 	request := httptest.NewRequest(
 		http.MethodGet,
