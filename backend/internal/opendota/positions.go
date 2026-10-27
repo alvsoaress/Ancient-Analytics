@@ -21,6 +21,11 @@ type PositionHeroStat struct {
 	Position      int
 	Picks         int
 	Wins          int
+	// Somas de K/D/A apenas das escolhas em que a fonte informou os três valores.
+	Kills    int
+	Deaths   int
+	Assists  int
+	KDAPicks int
 }
 
 type PositionSample struct {
@@ -44,6 +49,9 @@ type positionPlayer struct {
 	HeroID      int  `json:"hero_id"`
 	PlayerSlot  *int `json:"player_slot"`
 	PositionEst *int `json:"position_est"`
+	Kills       *int `json:"kills"`
+	Deaths      *int `json:"deaths"`
+	Assists     *int `json:"assists"`
 }
 
 type positionMatch struct {
@@ -153,6 +161,12 @@ func (c *Client) fetchPositionSnapshot(ctx context.Context) (PositionSnapshot, e
 			stat.Picks++
 			if (*player.PlayerSlot < 128) == *match.RadiantWin {
 				stat.Wins++
+			}
+			if player.Kills != nil && player.Deaths != nil && player.Assists != nil {
+				stat.Kills += *player.Kills
+				stat.Deaths += *player.Deaths
+				stat.Assists += *player.Assists
+				stat.KDAPicks++
 			}
 			counts[key] = stat
 		}

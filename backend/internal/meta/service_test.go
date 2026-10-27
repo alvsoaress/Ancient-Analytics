@@ -76,6 +76,28 @@ func TestServiceHeroes(t *testing.T) {
 			*hero.WinRate,
 		)
 	}
+
+	if hero.KDA != nil {
+		t.Errorf("o agregado geral não informa K/D/A: %v", *hero.KDA)
+	}
+}
+
+func TestServiceHeroesEstimatesPickRate(t *testing.T) {
+	stats := []opendota.HeroStat{{ID: 1, ProPick: 4}, {ID: 2, ProPick: 16}, {ID: 3}}
+	heroes, err := NewService(fakeStatsClient{stats: stats}).Heroes(context.Background(), 1, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 20 escolhas no total correspondem a 2 partidas; heróis filtrados também entram no total.
+	if len(heroes) != 2 || heroes[0].PickRate == nil || *heroes[0].PickRate != 200 ||
+		heroes[1].PickRate == nil || *heroes[1].PickRate != 800 {
+		t.Fatalf("taxa de escolha inesperada: %+v", heroes)
+	}
+
+	heroes, err = NewService(fakeStatsClient{stats: []opendota.HeroStat{{ID: 1}}}).Heroes(context.Background(), 0, "")
+	if err != nil || heroes[0].PickRate != nil {
+		t.Fatalf("sem escolhas, a taxa deve ser indisponível: %+v; erro: %v", heroes, err)
+	}
 }
 
 func TestServiceHeroesWithoutPicks(t *testing.T) {

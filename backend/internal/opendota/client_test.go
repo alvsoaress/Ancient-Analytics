@@ -28,6 +28,7 @@ func TestHeroes(t *testing.T) {
 			w.Write([]byte(`[
 				{
 					"id": 1,
+					"name": "npc_dota_hero_antimage",
 					"localized_name": "Anti-Mage",
 					"primary_attr": "agi",
 					"attack_type": "Melee",
@@ -58,6 +59,13 @@ func TestHeroes(t *testing.T) {
 
 	if hero.ID != 1 {
 		t.Errorf("ID recebido: %d; esperado: 1", hero.ID)
+	}
+
+	if hero.Name != "npc_dota_hero_antimage" {
+		t.Errorf(
+			"nome interno recebido: %q; esperado: npc_dota_hero_antimage",
+			hero.Name,
+		)
 	}
 
 	if hero.LocalizedName != "Anti-Mage" {

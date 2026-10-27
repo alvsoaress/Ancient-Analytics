@@ -42,7 +42,7 @@ func TestParsePosition(t *testing.T) {
 func TestServiceHeroesByPosition(t *testing.T) {
 	client := positionTestClient{snapshot: opendota.PositionSnapshot{
 		Stats: []opendota.PositionHeroStat{
-			{HeroID: 1, LocalizedName: "Hero 1", Position: 1, Picks: 2, Wins: 1},
+			{HeroID: 1, LocalizedName: "Hero 1", Position: 1, Picks: 2, Wins: 1, Kills: 7, Deaths: 3, Assists: 5, KDAPicks: 2},
 			{HeroID: 1, LocalizedName: "Hero 1", Position: 2, Picks: 1, Wins: 1},
 			{HeroID: 3, LocalizedName: "Hero 3", Position: 3, Picks: 1, Wins: 0},
 			{HeroID: 2, LocalizedName: "Hero 2", Position: 4, Picks: 1, Wins: 1},
@@ -71,6 +71,20 @@ func TestServiceHeroesByPosition(t *testing.T) {
 				t.Fatalf("a cobertura da amostra deve ser preservada: %+v", result.Sample)
 			}
 		})
+	}
+	carry, err := service.HeroesByPosition(context.Background(), 1, "", Carry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hero := carry.Heroes[0]; hero.PickRate == nil || *hero.PickRate != 100 || hero.KDA == nil || *hero.KDA != 4 {
+		t.Fatalf("taxa de escolha ou KDA inesperados: %+v", hero)
+	}
+	mid, err := service.HeroesByPosition(context.Background(), 1, "", Mid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hero := mid.Heroes[0]; hero.PickRate == nil || *hero.PickRate != 50 || hero.KDA != nil {
+		t.Fatalf("sem K/D/A na fonte, o KDA deve ser indisponível: %+v", hero)
 	}
 	filtered, err := service.HeroesByPosition(context.Background(), 2, "picks", Support4)
 	if err != nil || filtered.Heroes == nil || len(filtered.Heroes) != 0 {

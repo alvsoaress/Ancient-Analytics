@@ -61,6 +61,9 @@ func (s *Service) HeroesByPosition(ctx context.Context, minPicks int, sortBy str
 		}
 		heroes = append(heroes, HeroPerformance{
 			HeroID: stat.HeroID, Name: stat.LocalizedName, Picks: stat.Picks, Wins: stat.Wins, WinRate: rate,
+			// Cada partida da amostra tem exatamente um herói por posição em cada time, e heróis não se repetem.
+			PickRate: PickRate(stat.Picks, float64(snapshot.Sample.MatchesIncluded)),
+			KDA:      KDA(stat.Kills, stat.Deaths, stat.Assists, stat.KDAPicks),
 		})
 	}
 	if err := sortHeroes(heroes, sortBy); err != nil {

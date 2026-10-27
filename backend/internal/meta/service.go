@@ -13,11 +13,13 @@ type StatsClient interface {
 }
 
 type HeroPerformance struct {
-	HeroID  int      `json:"heroId"`
-	Name    string   `json:"name"`
-	Picks   int      `json:"picks"`
-	Wins    int      `json:"wins"`
-	WinRate *float64 `json:"winRate"`
+	HeroID   int      `json:"heroId"`
+	Name     string   `json:"name"`
+	Picks    int      `json:"picks"`
+	Wins     int      `json:"wins"`
+	WinRate  *float64 `json:"winRate"`
+	PickRate *float64 `json:"pickRate"`
+	KDA      *float64 `json:"kda"`
 }
 
 type Service struct {
@@ -44,6 +46,14 @@ func (s *Service) Heroes(
 		return nil, fmt.Errorf("consultar estatísticas de meta: %w", err)
 	}
 
+	// A OpenDota não informa o total de partidas profissionais; cada partida tem dez escolhas,
+	// então o total é estimado pela soma das escolhas de todos os heróis dividida por dez.
+	totalPicks := 0
+	for _, stat := range stats {
+		totalPicks += stat.ProPick
+	}
+	matches := float64(totalPicks) / 10
+
 	heroes := make([]HeroPerformance, 0, len(stats))
 
 	for _, stat := range stats {
@@ -61,11 +71,12 @@ func (s *Service) Heroes(
 		}
 
 		heroes = append(heroes, HeroPerformance{
-			HeroID:  stat.ID,
-			Name:    stat.LocalizedName,
-			Picks:   stat.ProPick,
-			Wins:    stat.ProWin,
-			WinRate: rate,
+			HeroID:   stat.ID,
+			Name:     stat.LocalizedName,
+			Picks:    stat.ProPick,
+			Wins:     stat.ProWin,
+			WinRate:  rate,
+			PickRate: PickRate(stat.ProPick, matches),
 		})
 	}
 

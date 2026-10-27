@@ -19,7 +19,7 @@ func positionMatchFixture(id int64) map[string]any {
 		for position := 1; position <= 5; position++ {
 			players = append(players, map[string]any{
 				"hero_id": team*5 + position, "player_slot": team*128 + position - 1,
-				"position_est": position,
+				"position_est": position, "kills": position, "deaths": 2, "assists": 3,
 			})
 		}
 	}
@@ -108,6 +108,9 @@ func TestHeroPositionStatsAggregatesEstimatedPositions(t *testing.T) {
 	}
 	if found[[2]int{3, 3}].Wins != 1 || found[[2]int{3, 4}].Wins != 0 {
 		t.Fatal("as vitórias devem ser calculadas por posição e pelo time vencedor")
+	}
+	if stat := found[[2]int{1, 1}]; stat.Kills != 2 || stat.Deaths != 4 || stat.Assists != 6 || stat.KDAPicks != 2 {
+		t.Fatalf("K/D/A deve ser somado nas escolhas com dados: %+v", stat)
 	}
 
 	snapshot.Stats[0].Picks = 999
