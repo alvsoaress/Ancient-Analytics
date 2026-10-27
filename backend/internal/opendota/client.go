@@ -7,13 +7,15 @@ import (
 )
 
 type Client struct {
-	baseURL    string
-	httpClient *http.Client
-
+	baseURL         string
+	httpClient      *http.Client
 	heroesMu        sync.Mutex
 	heroesCache     []Hero
 	heroesExpiresAt time.Time
 	cacheTTL        time.Duration
+	statsMu         sync.Mutex
+	statsCache      []HeroStat
+	statsExpiresAt  time.Time
 }
 
 func NewClient() *Client {

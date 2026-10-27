@@ -36,7 +36,7 @@ func TestHealth(t *testing.T) {
 	response := httptest.NewRecorder()
 
 	client := opendota.NewClient()
-	handler := NewHandler(client)
+	handler := NewHandler(client, fakeMetaService{})
 	handler.ServeHTTP(response, request)
 
 	if response.Code != http.StatusOK {
@@ -62,7 +62,7 @@ func TestHealth(t *testing.T) {
 }
 
 func TestHeroes(t *testing.T) {
-	handler := NewHandler(fakeHeroesClient{})
+	handler := NewHandler(fakeHeroesClient{}, fakeMetaService{})
 
 	request := httptest.NewRequest(
 		http.MethodGet,
@@ -103,7 +103,7 @@ func TestHeroesReturnsBadGateway(t *testing.T) {
 	client := fakeHeroesClient{
 		err: errors.New("falha de conexão com o provedor"),
 	}
-	handler := NewHandler(client)
+	handler := NewHandler(client, fakeMetaService{})
 
 	request := httptest.NewRequest(
 		http.MethodGet,

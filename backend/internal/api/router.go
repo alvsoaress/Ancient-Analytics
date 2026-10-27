@@ -17,7 +17,7 @@ func health(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(`{"status":"ok"}`))
 }
 
-func NewHandler(client HeroesClient) http.Handler {
+func NewHandler(client HeroesClient, metaService MetaService) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /api/health", health)
@@ -44,6 +44,8 @@ func NewHandler(client HeroesClient) http.Handler {
 
 		_ = json.NewEncoder(w).Encode(heroes)
 	})
+
+	mux.HandleFunc("GET /api/meta/heroes", metaHeroes(metaService))
 
 	return mux
 }
