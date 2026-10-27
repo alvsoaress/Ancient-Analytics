@@ -4,7 +4,7 @@ Aplicação web local para consultar estatísticas de Dota 2 por meio de APIs ex
 
 ## Escopo
 
-A primeira versão terá meta, heróis, jogadores e partidas, com consulta pública. Personalização fica para depois. O backend já consulta o catálogo de heróis, estatísticas de meta e o perfil público de jogadores. O histórico de partidas por jogador também está disponível, com paginação. Os detalhes completos de cada partida seguem planejados.
+A primeira versão terá meta, heróis, jogadores e partidas, com consulta pública. Personalização fica para depois. O backend já consulta o catálogo de heróis, estatísticas de meta e o perfil público de jogadores. O histórico de partidas por jogador também está disponível, com paginação. A consulta de detalhes básicos de uma partida pelo seu ID também está disponível.
 
 ## Arquitetura
 
@@ -177,6 +177,28 @@ Nesta etapa, o histórico é consultado diretamente, sem cache próprio ou banco
 
 Referências: [parâmetros de paginação e ordenação](https://github.com/odota/core/blob/master/svc/api/requests/playerParams.ts) e [campos do histórico](https://github.com/odota/core/blob/master/svc/api/responses/PlayerMatchesResponse.ts).
 
+### Detalhes de uma partida
+
+`GET /api/matches/{matchId}` consulta uma partida pública da OpenDota, sem login. O `matchId` pode ser obtido no histórico do jogador:
+
+```bash
+curl 'http://127.0.0.1:8080/api/matches/9025128045'
+```
+
+A resposta contém `matchId`, `durationSeconds`, `startTime` (Unix em segundos), `gameMode`, `lobbyType`, `winner`, `radiantScore`, `direScore` e `players`.
+
+- `winner`: `radiant`, `dire` ou `null` quando o resultado não estiver disponível. Não é deduzido pelo placar.
+- Cada jogador contém `accountId`, `name` (apelido público), `heroId`, `playerSlot`, `team`, `won`, `kills`, `deaths`, `assists`, `goldPerMinute`, `xpPerMinute`, `heroDamage`, `towerDamage`, `heroHealing`, `lastHits`, `denies` e `level`.
+- `team` é `radiant` para slots 0–127 e `dire` para 128–255. Sem slot, `team` e `won` são `null`; sem vencedor, `won` é `null` mesmo que o time seja conhecido.
+- Identificação de conta ausente, zero ou anônima (`4294967295`) retorna `accountId: null`. Nome vazio e herói zero também retornam `null`. Não são feitas consultas adicionais para identificar jogadores anônimos.
+- Dados não fornecidos permanecem `null`, incluindo estatísticas dependentes de análise do replay. Zero abates, dano ou cura continuam sendo zero. Quando não há jogadores disponíveis, `players` é `[]`. A lista mantém a ordem da fonte e não exige exatamente dez jogadores, permitindo modos diferentes.
+
+`matchId` deve ser um inteiro positivo até 9007199254740991, preservando a exatidão dos números no JavaScript. Identificadores inválidos retornam HTTP `400`, `INVALID_MATCH_ID`, sem consultar a fonte. Uma resposta HTTP `404` da OpenDota retorna HTTP `404`, `MATCH_NOT_FOUND`. Outras falhas de consulta ou respostas inconsistentes retornam HTTP `502`, `UPSTREAM_UNAVAILABLE`, sem expor detalhes internos.
+
+A consulta faz uma chamada externa, com o timeout de dez segundos do cliente e limite de resposta de 16 MiB. Esta etapa não guarda detalhes em cache ou banco e não solicita processamento de replay; ela exibe os dados já disponíveis. O conteúdo publicado é limitado aos campos descritos acima.
+
+Referência: [campos dos detalhes de partidas na OpenDota](https://github.com/odota/core/blob/master/svc/api/responses/MatchResponse.ts).
+
 Para executar os testes e as verificações estáticas:
 
 ```bash
@@ -192,12 +214,13 @@ backend/
 ├── cmd/api/main.go       # Monta as dependências e inicia o servidor
 ├── internal/api/         # Rotas, validação HTTP e respostas JSON
 ├── internal/meta/        # Cálculos, filtros e ordenação de desempenho
+├── internal/matches/     # Detalhes, times e desempenho por partida
 ├── internal/opendota/    # Consulta à fonte externa e caches em memória
 ├── internal/players/     # Perfil, histórico paginado e dados opcionais
 └── go.mod
 ```
 
-Cada módulo mantém seus testes junto aos arquivos de implementação. O módulo de partidas será adicionado quando sua funcionalidade for implementada.
+Cada módulo mantém seus testes junto aos arquivos de implementação. O servidor em `cmd/api` monta os serviços de meta, jogadores e partidas usando o cliente OpenDota e os entrega ao roteador HTTP.
 
 ## Frontend
 

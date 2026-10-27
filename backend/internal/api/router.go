@@ -17,7 +17,7 @@ func health(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(`{"status":"ok"}`))
 }
 
-func NewHandler(client HeroesClient, metaService MetaService, playersService PlayersService) http.Handler {
+func NewHandler(client HeroesClient, metaService MetaService, playersService PlayersService, matchesService MatchesService) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /api/health", health)
@@ -48,6 +48,7 @@ func NewHandler(client HeroesClient, metaService MetaService, playersService Pla
 	mux.HandleFunc("GET /api/meta/heroes", metaHeroes(metaService))
 	mux.HandleFunc("GET /api/players/{accountId}", playerProfile(playersService))
 	mux.HandleFunc("GET /api/players/{accountId}/matches", playerMatches(playersService))
+	mux.HandleFunc("GET /api/matches/{matchId}", matchDetails(matchesService))
 
 	return mux
 }

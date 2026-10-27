@@ -32,7 +32,7 @@ func TestPlayerProfileRoute(t *testing.T) {
 	received := uint32(0)
 	handler := NewHandler(fakeHeroesClient{}, fakeMetaService{}, fakePlayersService{
 		profile: players.Profile{AccountID: 42, Name: &name, SteamID: &steamID, AvatarURL: &avatar, ProfileURL: &profileURL, RankTier: &rank}, receivedID: &received,
-	})
+	}, fakeMatchesService{})
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/players/42", nil))
 	if response.Code != http.StatusOK || received != 42 || response.Header().Get("Content-Type") != "application/json" {
@@ -56,7 +56,7 @@ func TestPlayerProfileRoute(t *testing.T) {
 }
 
 func TestPlayerProfileUnavailableFieldsAreNull(t *testing.T) {
-	handler := NewHandler(fakeHeroesClient{}, fakeMetaService{}, fakePlayersService{profile: players.Profile{AccountID: 42}})
+	handler := NewHandler(fakeHeroesClient{}, fakeMetaService{}, fakePlayersService{profile: players.Profile{AccountID: 42}}, fakeMatchesService{})
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/players/42", nil))
 	var body map[string]json.RawMessage
@@ -74,7 +74,7 @@ func TestPlayerProfileRejectsInvalidAccountID(t *testing.T) {
 	for _, id := range []string{"0", "-1", "abc", "1.5", "4294967296", "76561198000000000"} {
 		t.Run(id, func(t *testing.T) {
 			received := uint32(0)
-			handler := NewHandler(fakeHeroesClient{}, fakeMetaService{}, fakePlayersService{receivedID: &received})
+			handler := NewHandler(fakeHeroesClient{}, fakeMetaService{}, fakePlayersService{receivedID: &received}, fakeMatchesService{})
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/players/"+id, nil))
 			var body struct {
@@ -103,7 +103,7 @@ func TestPlayerProfileErrorResponses(t *testing.T) {
 		{"fonte_falhou", errors.New("detalhe interno da conexão"), 502, "UPSTREAM_UNAVAILABLE"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			handler := NewHandler(fakeHeroesClient{}, fakeMetaService{}, fakePlayersService{err: test.err})
+			handler := NewHandler(fakeHeroesClient{}, fakeMetaService{}, fakePlayersService{err: test.err}, fakeMatchesService{})
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/players/42", nil))
 			var body struct {
