@@ -14,6 +14,7 @@ type MetaService interface {
 	Heroes(
 		ctx context.Context,
 		minPicks int,
+		sortBy string,
 	) ([]meta.HeroPerformance, error)
 }
 
@@ -43,7 +44,24 @@ func metaHeroes(service MetaService) http.HandlerFunc {
 			return
 		}
 
-		heroes, err := service.Heroes(r.Context(), minPicks)
+		sortBy := ""
+		sortValues, sortProvided := query["sortBy"]
+		if sortProvided && len(sortValues) == 1 {
+			sortBy = sortValues[0]
+		}
+		if (sortProvided && len(sortValues) != 1) ||
+			(sortBy != "" && sortBy != "winRate" && sortBy != "picks") {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"error": map[string]string{
+					"code":    "INVALID_SORT_BY",
+					"message": "sortBy deve ser informado uma única vez como winRate ou picks.",
+				},
+			})
+			return
+		}
+
+		heroes, err := service.Heroes(r.Context(), minPicks, sortBy)
 
 		if err != nil {
 			w.WriteHeader(http.StatusBadGateway)

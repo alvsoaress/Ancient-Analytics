@@ -33,7 +33,7 @@ func TestServiceHeroes(t *testing.T) {
 
 	service := NewService(client)
 
-	heroes, err := service.Heroes(context.Background(), 0)
+	heroes, err := service.Heroes(context.Background(), 0, "")
 	if err != nil {
 		t.Fatalf("erro ao obter desempenho: %v", err)
 	}
@@ -92,7 +92,7 @@ func TestServiceHeroesWithoutPicks(t *testing.T) {
 
 	service := NewService(client)
 
-	heroes, err := service.Heroes(context.Background(), 0)
+	heroes, err := service.Heroes(context.Background(), 0, "")
 	if err != nil {
 		t.Fatalf("erro ao obter desempenho: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestServiceHeroesPropagatesClientError(t *testing.T) {
 
 	service := NewService(client)
 
-	heroes, err := service.Heroes(context.Background(), 0)
+	heroes, err := service.Heroes(context.Background(), 0, "")
 
 	if !errors.Is(err, expectedErr) {
 		t.Fatalf(
@@ -154,7 +154,7 @@ func TestServiceHeroesFiltersByMinPicks(t *testing.T) {
 
 	service := NewService(client)
 
-	heroes, err := service.Heroes(context.Background(), 10)
+	heroes, err := service.Heroes(context.Background(), 10, "")
 	if err != nil {
 		t.Fatalf("erro ao consultar desempenho: %v", err)
 	}

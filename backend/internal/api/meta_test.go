@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/alvsoaress/ancient-analytics-backend/internal/meta"
+	"github.com/alvsoaress/ancient-analytics-backend/internal/opendota"
 )
 
 type fakeMetaService struct {
@@ -20,11 +21,116 @@ type fakeMetaService struct {
 func (f fakeMetaService) Heroes(
 	ctx context.Context,
 	minPicks int,
+	sortBy string,
 ) ([]meta.HeroPerformance, error) {
 	if f.receivedMinPicks != nil {
 		*f.receivedMinPicks = minPicks
 	}
 	return f.heroes, f.err
+}
+
+type fakeMetaStatsClient struct {
+	stats []opendota.HeroStat
+}
+
+func (f fakeMetaStatsClient) HeroStats(context.Context) ([]opendota.HeroStat, error) {
+	return f.stats, nil
+}
+
+func TestMetaHeroesFiltersAndSorts(t *testing.T) {
+	client := fakeMetaStatsClient{
+		stats: []opendota.HeroStat{
+			{ID: 3, LocalizedName: "No sample", ProPick: 0, ProWin: 0},
+			{ID: 5, LocalizedName: "Zero rate", ProPick: 10, ProWin: 0},
+			{ID: 2, LocalizedName: "Most picks", ProPick: 20, ProWin: 10},
+			{ID: 4, LocalizedName: "Higher ID", ProPick: 10, ProWin: 9},
+			{ID: 1, LocalizedName: "Lower ID", ProPick: 10, ProWin: 9},
+			{ID: 6, LocalizedName: "Small sample", ProPick: 9, ProWin: 9},
+		},
+	}
+	handler := NewHandler(fakeHeroesClient{}, meta.NewService(client))
+	tests := []struct {
+		name    string
+		query   string
+		wantIDs []int
+	}{
+		{name: "taxa_com_amostra_minima", query: "minPicks=10&sortBy=winRate", wantIDs: []int{1, 4, 2, 5}},
+		{name: "escolhas_com_amostra_minima", query: "minPicks=10&sortBy=picks", wantIDs: []int{2, 1, 4, 5}},
+		{name: "taxa_zero_antes_de_null", query: "sortBy=winRate", wantIDs: []int{6, 1, 4, 2, 5, 3}},
+		{name: "sem_criterio_preserva_fonte", wantIDs: []int{3, 5, 2, 4, 1, 6}},
+		{name: "criterio_vazio_preserva_fonte", query: "sortBy=", wantIDs: []int{3, 5, 2, 4, 1, 6}},
+		{name: "filtro_sem_resultados", query: "minPicks=100&sortBy=winRate", wantIDs: []int{}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, "/api/meta/heroes?"+test.query, nil)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusOK {
+				t.Fatalf("status recebido: %d; esperado: 200; corpo: %s", response.Code, response.Body.String())
+			}
+			var body struct {
+				Scope  string                 `json:"scope"`
+				Heroes []meta.HeroPerformance `json:"heroes"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+				t.Fatalf("resposta JSON inválida: %v", err)
+			}
+			if body.Scope != "professional" {
+				t.Errorf("recorte inesperado: %q", body.Scope)
+			}
+			if body.Heroes == nil {
+				t.Fatal("heroes deve ser uma lista, inclusive quando vazia")
+			}
+			if len(body.Heroes) != len(test.wantIDs) {
+				t.Fatalf("quantidade de resultados: %d; esperado: %d", len(body.Heroes), len(test.wantIDs))
+			}
+			for i, wantID := range test.wantIDs {
+				if body.Heroes[i].HeroID != wantID {
+					t.Errorf("posição %d: ID recebido %d; esperado: %d", i, body.Heroes[i].HeroID, wantID)
+				}
+			}
+		})
+	}
+}
+
+func TestMetaHeroesRejectsInvalidSortBy(t *testing.T) {
+	for _, query := range []string{
+		"sortBy=unknown",
+		"sortBy=wins",
+		"sortBy=winrate",
+		"sortBy=winRate&sortBy=picks",
+	} {
+		t.Run(query, func(t *testing.T) {
+			receivedMinPicks := -1
+			handler := NewHandler(fakeHeroesClient{}, fakeMetaService{receivedMinPicks: &receivedMinPicks})
+			request := httptest.NewRequest(http.MethodGet, "/api/meta/heroes?"+query, nil)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("status recebido: %d; esperado: 400", response.Code)
+			}
+			if response.Header().Get("Content-Type") != "application/json" {
+				t.Error("a resposta deveria ter Content-Type application/json")
+			}
+			if receivedMinPicks != -1 {
+				t.Error("o serviço não deveria ser chamado para um critério inválido")
+			}
+			var body struct {
+				Error struct {
+					Code    string `json:"code"`
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+				t.Fatalf("resposta JSON inválida: %v", err)
+			}
+			if body.Error.Code != "INVALID_SORT_BY" || body.Error.Message != "sortBy deve ser informado uma única vez como winRate ou picks." {
+				t.Errorf("erro inesperado: %+v", body.Error)
+			}
+		})
+	}
 }
 
 func TestMetaHeroesPassesMinPicks(t *testing.T) {

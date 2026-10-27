@@ -32,6 +32,7 @@ func NewService(client StatsClient) *Service {
 func (s *Service) Heroes(
 	ctx context.Context,
 	minPicks int,
+	sortBy string,
 ) ([]HeroPerformance, error) {
 	if minPicks < 0 {
 		return nil, fmt.Errorf("minPicks não pode ser negativo")
@@ -65,6 +66,10 @@ func (s *Service) Heroes(
 			Wins:    stat.ProWin,
 			WinRate: rate,
 		})
+	}
+
+	if err := sortHeroes(heroes, sortBy); err != nil {
+		return nil, err
 	}
 
 	return heroes, nil
