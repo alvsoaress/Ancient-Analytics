@@ -9,6 +9,7 @@ import (
 
 type StatsClient interface {
 	HeroStats(ctx context.Context) ([]opendota.HeroStat, error)
+	HeroPositionStats(ctx context.Context) (opendota.PositionSnapshot, error)
 }
 
 type HeroPerformance struct {

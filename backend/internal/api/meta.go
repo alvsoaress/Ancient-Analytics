@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/alvsoaress/ancient-analytics-backend/internal/meta"
+	"github.com/alvsoaress/ancient-analytics-backend/internal/opendota"
 )
 
 type MetaService interface {
@@ -16,11 +17,15 @@ type MetaService interface {
 		minPicks int,
 		sortBy string,
 	) ([]meta.HeroPerformance, error)
+	HeroesByPosition(ctx context.Context, minPicks int, sortBy string, position meta.Position) (meta.PositionResult, error)
 }
 
 type metaHeroesResponse struct {
-	Scope  string                 `json:"scope"`
-	Heroes []meta.HeroPerformance `json:"heroes"`
+	Scope          string                   `json:"scope"`
+	Heroes         []meta.HeroPerformance   `json:"heroes"`
+	Position       string                   `json:"position,omitempty"`
+	PositionSource string                   `json:"positionSource,omitempty"`
+	Sample         *opendota.PositionSample `json:"sample,omitempty"`
 }
 
 func metaHeroes(service MetaService) http.HandlerFunc {
@@ -61,23 +66,50 @@ func metaHeroes(service MetaService) http.HandlerFunc {
 			return
 		}
 
-		heroes, err := service.Heroes(r.Context(), minPicks, sortBy)
-
-		if err != nil {
-			w.WriteHeader(http.StatusBadGateway)
-
+		var position meta.Position
+		positionValues, positionProvided := query["position"]
+		if positionProvided && len(positionValues) == 1 {
+			position, err = meta.ParsePosition(positionValues[0])
+		}
+		if positionProvided && (len(positionValues) != 1 || err != nil) {
+			w.WriteHeader(http.StatusBadRequest)
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"error": map[string]string{
-					"code":    "UPSTREAM_UNAVAILABLE",
-					"message": "Não foi possível consultar as estatísticas de meta.",
+					"code":    "INVALID_POSITION",
+					"message": "position deve ser informado uma única vez como carry, mid, offlane, support4 ou support5.",
 				},
 			})
 			return
 		}
 
-		response := metaHeroesResponse{
-			Scope:  "professional",
-			Heroes: heroes,
+		response := metaHeroesResponse{Scope: "professional"}
+		if positionProvided {
+			var result meta.PositionResult
+			result, err = service.HeroesByPosition(r.Context(), minPicks, sortBy, position)
+			response.Heroes = result.Heroes
+			response.Position = position.String()
+			response.PositionSource = "opendota.position_est"
+			response.Sample = &result.Sample
+		} else {
+			response.Heroes, err = service.Heroes(r.Context(), minPicks, sortBy)
+		}
+
+		if err != nil {
+			w.WriteHeader(http.StatusBadGateway)
+			code := "UPSTREAM_UNAVAILABLE"
+			message := "Não foi possível consultar as estatísticas de meta."
+			if positionProvided {
+				code = "POSITION_DATA_UNAVAILABLE"
+				message = "Não foi possível obter uma amostra profissional com posições estimadas."
+			}
+
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"error": map[string]string{
+					"code":    code,
+					"message": message,
+				},
+			})
+			return
 		}
 
 		_ = json.NewEncoder(w).Encode(response)
