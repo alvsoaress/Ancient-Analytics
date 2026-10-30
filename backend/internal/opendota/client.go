@@ -7,20 +7,25 @@ import (
 )
 
 type Client struct {
-	baseURL            string
-	httpClient         *http.Client
-	heroesMu           sync.Mutex
-	heroesCache        []Hero
-	heroesExpiresAt    time.Time
-	cacheTTL           time.Duration
-	statsMu            sync.Mutex
-	statsCache         []HeroStat
-	statsExpiresAt     time.Time
-	positionsMu        sync.Mutex
-	positionsCache     *PositionSnapshot
-	positionsExpiresAt time.Time
-	playersMu          sync.Mutex
-	playersCache       map[uint32]playerCacheEntry
+	buildCatalogMu        sync.Mutex
+	buildCatalogCache     *BuildCatalogData
+	buildCatalogExpiresAt time.Time
+	buildSamplesMu        sync.Mutex
+	buildSamplesCache     map[int]buildSampleCacheEntry
+	baseURL               string
+	httpClient            *http.Client
+	heroesMu              sync.Mutex
+	heroesCache           []Hero
+	heroesExpiresAt       time.Time
+	cacheTTL              time.Duration
+	statsMu               sync.Mutex
+	statsCache            []HeroStat
+	statsExpiresAt        time.Time
+	positionsMu           sync.Mutex
+	positionsCache        *PositionSnapshot
+	positionsExpiresAt    time.Time
+	playersMu             sync.Mutex
+	playersCache          map[uint32]playerCacheEntry
 }
 
 func NewClient() *Client {

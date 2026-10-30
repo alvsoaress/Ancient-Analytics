@@ -12,6 +12,7 @@ React, TypeScript e Vite. A direção visual adotada é Arena / Dados em destaqu
 | 4 | Histórico paginado e acesso às partidas | Implementada |
 | 5 | Detalhes da partida, times e desempenho por jogador | Implementada |
 | 6 | Revisão integrada de carregamento, erros, acessibilidade e responsividade | Implementada |
+| 7 | Busca na home e páginas de builds por herói, com itens, habilidades e talentos | Implementada |
 
 Cada etapa deve passar pela compilação, análise de código e verificação dos seus fluxos no navegador antes de avançar.
 
@@ -35,19 +36,22 @@ O Vite exibe o endereço local no terminal, normalmente `http://localhost:5173`.
 ```bash
 npm run build
 npm run lint
+npm test
 ```
 
 ## Organização e responsabilidades
 
 ```text
 src/
-├── App.tsx                    # Página inicial ou página da partida, conforme a URL; carrega o catálogo de heróis
+├── App.tsx                    # Página inicial, partida ou builds, conforme a URL; carrega o catálogo de heróis
 ├── App.css                    # Layout e adaptação aos tamanhos de tela
 ├── index.css                  # Tokens de cor, fontes e regras globais de acessibilidade
 ├── api.ts                     # Tipos da API, requisições, estados de carregamento e URL dos retratos
 ├── players.ts                 # Conversão do ID informado e nome das medalhas
 ├── matches.ts                 # Tipos do histórico e da partida, nomes de modos, filas e lados, formato da duração
 ├── navigation.ts              # Navegação sem recarregar e leitura de parâmetros da URL
+├── heroes.ts                  # Busca normalizada, validação do herói e endereços das builds
+├── builds.ts                  # Contrato de builds, formatação de tempos e resumo da amostra
 └── components/
     ├── Header.tsx             # Navegação e menu móvel
     ├── StatsPreview.tsx       # Destaque do topo: herói mais escolhido no cenário profissional
@@ -56,6 +60,12 @@ src/
     ├── PlayerSection.tsx      # Busca e perfil público do jogador
     ├── PlayerMatches.tsx      # Histórico paginado de partidas do jogador
     ├── MatchView.tsx          # Detalhes da partida: placar, times e desempenho por jogador
+    ├── HeroBuildView.tsx      # Página de builds, posição, sequência selecionada e amostra
+    ├── HeroBuildView.css      # Estilos da busca e das builds usando os tokens existentes
+    ├── BuildPanels.tsx        # Itens iniciais, progressão completa, habilidades e talentos
+    ├── BuildGuidePanels.tsx   # Inventário final, alternativas e histórico completo de compras
+    ├── HeroSearch.tsx         # Busca no topo, sugestões e acesso direto à build
+    ├── HeroLink.tsx           # Links de heróis com suporte a nova aba e navegação interna
     ├── HeroPortrait.tsx       # Retrato oficial e tratamento de imagem indisponível
     ├── RequestState.tsx       # Mensagens de carregamento e de erro, e o indicador de valor indisponível
     └── ErrorBoundary.tsx      # Mensagem de falha no lugar de uma tela em branco
@@ -64,7 +74,7 @@ public/
 └── fonts/                    # Fontes Barlow e Barlow Condensed (woff2) com licenças OFL
 ```
 
-Todas as cores ficam como tokens em `index.css`; `App.css` usa apenas essas variáveis.
+As cores da interface ficam como tokens em `index.css`; os estilos das builds reutilizam os mesmos tokens.
 
 ### Meta profissional
 
@@ -130,3 +140,26 @@ O topo da página (`StatsPreview`) usa `GET /api/meta/heroes?sortBy=picks&minPic
 Usar sempre os retratos oficiais correspondentes ao ID de cada herói, com suas cores originais. O endereço é montado a partir do nome interno do herói no catálogo OpenDota (`npc_dota_hero_antimage` → `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/antimage.png`), exposto pelo backend no campo `name` de `/api/heroes`. As imagens são carregadas da CDN Steam sob demanda. Se um retrato não carregar, a interface informa sua indisponibilidade e mantém o nome do herói, sem inventar personagens.
 
 As fontes vêm de `google/fonts`, sob SIL Open Font License; as licenças estão junto dos arquivos. As pranchas e alternativas visuais não são versionadas. Referências colocadas em `frontend/design/` permanecem locais e são ignoradas pelo Git; os arquivos usados pela aplicação ficam em `public/`.
+
+
+### Builds por herói
+
+A página `/?heroi=<ID>` consulta `GET /api/heroes/{heroId}/builds`. `/?heroi=62&posicao=support4`, por exemplo, abre Bounty Hunter na posição de suporte 4. IDs inválidos e posições desconhecidas são recusados na interface sem consultar a rota de builds. URLs diretas, recarregamento e os botões voltar/avançar do navegador são suportados.
+
+- **Entrada pela home:** o campo “Buscar build por herói” filtra o catálogo completo localmente, ignorando caixa, acentos, espaços e hífens. Apresenta até cinco sugestões com retrato e link para a página. Enter abre uma correspondência exata ou única; quando há várias opções, leva ao catálogo filtrado. Escape fecha as sugestões. Tab percorre os links nativos.
+- **Catálogo:** a busca no topo e o filtro por nome no catálogo compartilham o texto durante a navegação nesta aplicação. O filtro por atributo continua disponível. Os retratos e nomes do catálogo, da tabela de meta e do destaque do topo abrem as builds. Ctrl/Cmd+clique e clique do meio mantêm o comportamento de links para abrir outra aba.
+- **Posições:** Todas as posições, HC, Mid, Offlane, Suporte 4 e Suporte 5. A escolha fica na URL e corresponde ao parâmetro `position` do backend. Durante uma troca, os resultados anteriores deixam de ser exibidos, evitando apresentar dados da posição anterior como se fossem os novos; requisições obsoletas são canceladas.
+- **Seleção:** inicialmente mostra até quatro sequências, na ordem de popularidade entregue pelo backend, com a opção de revelar todas. Cada botão mostra os itens, a quantidade de partidas e a taxa de vitória. A primeira sequência é a mais jogada da amostra, sem afirmar que é uma recomendação automática. O número de partidas acompanha a taxa de vitória.
+- **Itens iniciais:** combinações exatas, quantidades, partidas e resultados, mostrando inicialmente até três inventários. Combinações adicionais ficam numa seção expansível. Inventário disponível sem compras anteriores ao início é diferente de informação indisponível.
+- **Compras:** sequência dos itens identificados pelo backend e mediana de tempo, em minutos e segundos. Medianas fracionadas são arredondadas ao segundo mais próximo. A progressão não é cortada por quantidade de itens; é separada em início de jogo, itens principais e final de jogo. Componentes e consumíveis ficam no histórico completo. Os nomes permanecem visíveis se uma imagem falhar.
+- **Inventário final:** mostra seis slots reais no encerramento das partidas, com seletor quando há inventários alternativos no grupo. Um espaço vazio é diferente de inventário indisponível. Não completa itens por suposição.
+- **Situacionais e alternativas:** itens observados em outras progressões da mesma amostra, excluindo os itens já presentes na sequência selecionada. Mostra frequência e resultados; todas as opções podem ser expandidas.
+- **Histórico completo:** seção expansível com todas as compras de uma partida real do grupo, inclusive componentes, receitas, consumíveis e repetições. Inclui link da partida na OpenDota.
+- **Habilidades:** imagens na ordem de todas as melhorias registradas, legenda com nomes e seletor quando há sequências alternativas. Os números representam a ordem de melhoria, sem presumir o nível em que pontos guardados foram usados. Habilidades desconhecidas mantêm seu ID.
+- **Talentos:** opções por nível e os resultados das escolhas efetivamente observadas na build. “Não observado nesta amostra” não é tratado como uma taxa de vitória igual a zero. Opções mais observadas são identificadas pelos contadores e pelo destaque visual. Quando o nome fornecido contém um marcador de valor não resolvido, a interface preserva o nome legível e informa que o valor não foi fornecido; não publica o marcador nem inventa um número.
+- **Imagens:** retrato, itens e habilidades usam as URLs da CDN Steam fornecidas pela API. Falhas mostram um marcador com rótulo acessível, preservando os nomes. Não há ícones ilustrativos substituindo itens reais.
+- **Amostra:** mostra quantidade de partidas, período, atualização, abrangência de patches e contagens de exclusão. O agrupamento usa a sequência completa de itens de uso/montados, sem limite de três compras ou preço mínimo de 1.000 de ouro. As fases seguem os tempos de compra. Estatísticas de milhares de partidas e filtro por patch não estão disponíveis nesta etapa.
+- **Estados:** carregamento explícito, falha com “Tentar novamente”, herói não encontrado e ausência de builds com acesso às demais posições. A falha da seção de meta não bloqueia o catálogo nem a busca.
+- **Navegação acessível:** título da aba por herói, foco na página ao abrir outro herói, botões com estado selecionado, links nativos e rótulos nos controles. O menu e o rodapé retornam às seções da home.
+
+Os testes em `tests/*.test.mjs` usam o executor nativo do Node.js (22.18 ou superior para ler os arquivos TypeScript), sem dependências adicionais. Cobrem a busca normalizada, IDs e posições inválidos, URLs compartilháveis, tempos e contagem de exclusões. `npm run build` valida os contratos TypeScript e produz a versão de distribuição; `npm run lint` executa as regras existentes do projeto.

@@ -206,6 +206,7 @@ go vet ./...
 backend/
 ├── cmd/api/main.go       # Monta as dependências e inicia o servidor
 ├── internal/api/         # Rotas, validação HTTP e respostas JSON
+├── internal/builds/      # Builds observadas, compras, habilidades e talentos
 ├── internal/meta/        # Cálculos, filtros e ordenação de desempenho
 ├── internal/matches/     # Detalhes, times e desempenho por partida
 ├── internal/opendota/    # Consulta à fonte externa e caches em memória
@@ -213,4 +214,61 @@ backend/
 └── go.mod
 ```
 
-Cada módulo mantém seus testes junto aos arquivos de implementação. O servidor em `cmd/api` monta os serviços de meta, jogadores e partidas usando o cliente OpenDota e os entrega ao roteador HTTP.
+Cada módulo mantém seus testes junto aos arquivos de implementação. O servidor em `cmd/api` monta os serviços de meta, jogadores, partidas e builds usando o cliente OpenDota e os entrega ao roteador HTTP.
+
+## Builds e progressão completa por herói
+
+`GET /api/heroes/{heroId}/builds` consulta sequências de itens, inventários iniciais e finais, habilidades e talentos observados em partidas profissionais. Funciona para qualquer herói de `/api/heroes`, sem uma lista de heróis fixa no código.
+
+```bash
+curl 'http://127.0.0.1:8080/api/heroes/73/builds?position=carry'
+curl 'http://127.0.0.1:8080/api/heroes/62/builds?position=support4'
+```
+
+`heroId` é um inteiro positivo até 2147483647. `position` é opcional e aceita `carry`, `mid`, `offlane`, `support4` e `support5`; o filtro usa `position_est` da OpenDota. Entradas inválidas retornam `400`, com `INVALID_HERO_ID` ou `INVALID_POSITION`, antes da consulta. Um ID válido ausente do catálogo retorna `404`, `HERO_NOT_FOUND`.
+
+### Progressão e agrupamento
+
+`grouping.method` é `complete_item_progression`. A resposta não possui mais corte de três itens nem preço mínimo de 1.000 de ouro. A progressão inclui botas, itens de uso e itens montados ao longo de toda a partida:
+
+- Compras com tempo menor ou igual a zero formam os inventários iniciais.
+- Após o início, a progressão mantém a primeira compra de cada item distinto que seja montado, de uso ativo/toggle ou classificado pela fonte fora das categorias de componentes e ingredientes da loja secreta. Botas básicas são mantidas, assim como Moon Shard, uma melhoria permanente que a fonte classifica como consumível.
+- Receitas, ingredientes básicos, consumíveis comuns e itens gratuitos não são apresentados como itens principais da progressão. Todos continuam no histórico completo da partida de exemplo, inclusive compras repetidas.
+- Itens montados permanecem na progressão mesmo quando são aprimorados ou vendidos depois. O inventário final usa exclusivamente os slots informados nos detalhes da partida; não é deduzido a partir das compras.
+- Partidas com a mesma sequência completa de IDs formam um grupo. Não é agrupado somente um prefixo de compras. Grupos diferentes não são misturados para fabricar uma combinação que nunca foi observada.
+- As builds são ordenadas por partidas decrescentes, vitórias decrescentes, quantidade de itens decrescente e ID textual crescente. No máximo 20 grupos podem existir na amostra; a rota não usa paginação.
+
+O campo `coreItems` representa a progressão completa de itens de uso/montados. Cada entrada contém `item`, `medianPurchaseTimeSeconds` e `stage`: `early` até 600 segundos, `core` acima de 600 e abaixo de 1500 segundos, e `late` a partir de 1500 segundos. Esses limites também são informados por `grouping.earlyGameEndsAtSeconds` e `grouping.lateGameStartsAtSeconds`. Fases sem compras adicionais ficam vazias; a quantidade de itens não define mais um estado artificial de “build incompleta”.
+
+### Resposta
+
+- `hero`: ID, nome, retrato, catálogo de habilidades e talentos dos níveis 10, 15, 20 e 25.
+- `source: "opendota"` e `scope: "professional_sample"`.
+- `position` e `positionSource`: posição consultada e `opendota.position_est`, ou ambos `null` sem filtro.
+- `builds`: progressões completas observadas, com `matches`, `wins`, `winRate` e `pickRate`. `pickRate` usa `sample.matchesGrouped` como denominador; não é a taxa de escolha do herói.
+- `startingInventories`: combinações exatas, incluindo quantidades, partidas e resultados. Um array de itens vazio representa compras disponíveis sem itens anteriores ao início.
+- `coreItems`: primeira compra de cada item da progressão, sem limite de quantidade, e seu tempo mediano dentro do grupo. Os custos e categorias são os do catálogo atual, não de um catálogo histórico por patch.
+- `abilityBuilds`: **toda** a sequência de `ability_upgrades_arr`, sem o corte anterior de dez entradas. `order` indica a ordem de melhoria, sem inventar o nível em que um ponto guardado foi gasto. Cada sequência tem seus próprios resultados e contagens.
+- `talents`: escolhas disponíveis no catálogo atual que aparecem nas melhorias da partida, com seus resultados. Uma partida longa pode ter escolhido as duas opções de um nível; cada uma é contada uma vez.
+- `finalInventories`: combinações dos seis slots principais ao término das partidas, com contagens e resultados. `slots` sempre tem seis posições; `null` num slot indica um espaço realmente vazio. IDs desconhecidos mantêm o ID e imagem indisponível. Se a fonte omitiu algum slot, a partida não entra nesse agregado de inventário, em vez de presumir espaços vazios. A ordem de uma combinação observada é preservada para exibição.
+- `exampleMatch`: ID, duração e resultado de uma partida real do grupo. Prefere uma vitória e depois maior duração e ID, de forma determinística.
+- `purchaseHistory`: todas as compras dessa partida de exemplo, ordenadas por tempo, com itens e `timeSeconds`. Inclui ingredientes, receitas, consumíveis e repetições, sem truncamento. Este histórico pertence à partida de exemplo; os tempos em `coreItems` são medianas do grupo.
+- `alternativeItems`: itens da progressão observados na amostra da posição consultada, com partidas, vitórias, taxa de presença (`purchaseRate`) e tempo mediano da primeira compra. Cada item é contado uma vez por partida. A interface apresenta os que não estão na sequência selecionada como alternativas; isso não é uma inferência automática da situação em que devem ser comprados.
+
+Os nomes e imagens vêm de `/constants/items`, `/constants/abilities`, `/constants/ability_ids` e `/constants/hero_abilities`. URLs de imagens são limitadas à CDN Steam e aos caminhos de imagens do Dota. Metadados de habilidade ausentes retornam `null`, preservando o ID. O backend fornece as URLs, sem funcionar como proxy de imagens.
+
+### Coleta, amostra e disponibilidade
+
+A OpenDota não entrega uma build editorial pronta como um guia da Steam. A coleta seleciona até 20 IDs distintos de `/heroes/{hero_id}/matches` e consulta seus detalhes. Exige liga profissional, resultado e jogador correspondente com slot válido e registro de compras disponível. Não usa `/heroes/{hero_id}/itemPopularity` como se fossem combinações profissionais completas: esse endpoint agrega compras individuais e não fornece esses relacionamentos.
+
+`sample` mantém limite, partidas solicitadas, incluídas e agrupadas; contagens de indisponibilidade, ausência de compras, outras posições, posições desconhecidas, itens desconhecidos e ausência de progressão; IDs das partidas, patches, período e coleta. `matchesWithoutCoreItems` contabiliza partidas sem progressão de itens de uso/montados após o início, conforme a regra acima. Não há descarte por quantidade inferior a três.
+
+Uma partida com compras de itens desconhecidos não é agrupada, pois a fonte não permite classificar esses itens com segurança. Partidas sem melhorias ainda podem fornecer itens, mas não entram nas contagens de habilidades. `sample.from` e `sample.to` são `null` quando nenhuma partida é incluída. As coleções são arrays, inclusive vazios.
+
+Amostra vazia, ausência de compras analisadas ou ausência de escolhas na posição podem gerar `200` com `builds: []` e seus contadores. Falha de catálogo, listagem ou de todos os detalhes retorna `502`, `UPSTREAM_UNAVAILABLE`; falhas parciais ficam explícitas na amostra. Erros usam o envelope JSON das demais funcionalidades, sem detalhes internos.
+
+São até quatro consultas simultâneas de detalhes, prazo de 30 segundos para a amostra e prazo total de 45 segundos no serviço. Cada chamada externa tem timeout de dez segundos e limite de 16 MiB. A primeira consulta com caches vazios faz até 26 chamadas. Catálogos são compartilhados por cinco minutos; amostras têm cache por herói de cinco minutos, compartilhado entre posições, com limite de 128 heróis. Erros não alimentam o cache. Não há varredura automática de todos os heróis, banco de dados ou dependências adicionais.
+
+A amostra pode conter mais de um patch e não representa uma janela fixa de dias ou MMR. Números de poucas partidas devem ser avaliados com essa limitação. Um inventário com menos de seis itens ocupados reflete a partida real, não uma lista a ser completada por suposição.
+
+Referências: [OpenDota API](https://docs.opendota.com/), [consulta de popularidade](https://github.com/odota/core/blob/master/svc/util/queries.ts), [detalhes de partidas](https://github.com/odota/core/blob/master/svc/api/responses/MatchResponse.ts) e [catálogos de itens e habilidades](https://github.com/odota/dotaconstants).

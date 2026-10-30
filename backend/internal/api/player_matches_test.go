@@ -37,7 +37,7 @@ func TestPlayerMatchesRouteAndPaginationDefaults(t *testing.T) {
 	}{{"", 20, 0}, {"?limit=2&offset=4", 2, 4}, {"?limit=100&offset=0", 100, 0}} {
 		next := test.offset + test.limit
 		service := &fakeHistoryService{result: players.MatchHistory{AccountID: 42, Matches: []players.Match{{MatchID: 9025128045}}, Pagination: players.Pagination{Limit: test.limit, Offset: test.offset, Count: 1, HasMore: true, NextOffset: &next}}}
-		handler := NewHandler(fakeHeroesClient{}, fakeMetaService{}, service, fakeMatchesService{})
+		handler := NewHandler(fakeHeroesClient{}, fakeMetaService{}, service, fakeMatchesService{}, fakeBuildsService{})
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/players/42/matches"+test.query, nil))
 		if response.Code != 200 || service.id != 42 || service.limit != test.limit || service.offset != test.offset || response.Header().Get("Content-Type") != "application/json" {
@@ -69,7 +69,7 @@ func TestPlayerMatchesRejectsInvalidQueryBeforeCallingService(t *testing.T) {
 		t.Run(test.path, func(t *testing.T) {
 			service := &fakeHistoryService{}
 			response := httptest.NewRecorder()
-			NewHandler(fakeHeroesClient{}, fakeMetaService{}, service, fakeMatchesService{}).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/players"+test.path, nil))
+			NewHandler(fakeHeroesClient{}, fakeMetaService{}, service, fakeMatchesService{}, fakeBuildsService{}).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/players"+test.path, nil))
 			var body struct {
 				Error struct {
 					Code string `json:"code"`
@@ -94,7 +94,7 @@ func TestPlayerMatchesEmptyHistoryAndSourceFailure(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			service := &fakeHistoryService{result: players.MatchHistory{AccountID: 42, Matches: []players.Match{}, Pagination: players.Pagination{Limit: 20}}, err: test.err}
 			response := httptest.NewRecorder()
-			NewHandler(fakeHeroesClient{}, fakeMetaService{}, service, fakeMatchesService{}).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/players/42/matches", nil))
+			NewHandler(fakeHeroesClient{}, fakeMetaService{}, service, fakeMatchesService{}, fakeBuildsService{}).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/players/42/matches", nil))
 			if response.Code != test.status {
 				t.Fatalf("status inesperado: %d %s", response.Code, response.Body.String())
 			}

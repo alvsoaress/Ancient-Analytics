@@ -4,7 +4,7 @@ import { navigate } from '../navigation'
 
 const links = [['#herois', 'Heróis'], ['#meta', 'Meta'], ['#jogador', 'Jogadores'], ['#partidas', 'Partidas']]
 
-// Na página de uma partida, as seções da página inicial não estão presentes; os links levam de volta a ela.
+// Nas páginas de detalhes, as seções da página inicial não estão presentes; os links levam de volta a ela.
 export function Header({ prefix = '' }: { prefix?: string }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuButton = useRef<HTMLButtonElement>(null)

@@ -31,7 +31,7 @@ func TestMatchDetailsRoute(t *testing.T) {
 	kills := 0
 	received := int64(0)
 	service := fakeMatchesService{receivedID: &received, result: matches.Details{MatchID: 9025128045, Winner: &winner, Players: []matches.Player{{Team: &team, Won: &won, Kills: &kills}}}}
-	handler := NewHandler(fakeHeroesClient{}, fakeMetaService{}, fakePlayersService{}, service)
+	handler := NewHandler(fakeHeroesClient{}, fakeMetaService{}, fakePlayersService{}, service, fakeBuildsService{})
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/matches/9025128045", nil))
 	if response.Code != 200 || response.Header().Get("Content-Type") != "application/json" || received != 9025128045 {
@@ -55,7 +55,7 @@ func TestMatchDetailsRejectsInvalidIDBeforeCallingService(t *testing.T) {
 	for _, id := range []string{"0", "-1", "abc", "1.5", "9007199254740992", "999999999999999999999"} {
 		t.Run(id, func(t *testing.T) {
 			received := int64(0)
-			handler := NewHandler(fakeHeroesClient{}, fakeMetaService{}, fakePlayersService{}, fakeMatchesService{receivedID: &received})
+			handler := NewHandler(fakeHeroesClient{}, fakeMetaService{}, fakePlayersService{}, fakeMatchesService{receivedID: &received}, fakeBuildsService{})
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/matches/"+id, nil))
 			if response.Code != 400 || received != 0 || !strings.Contains(response.Body.String(), `"code":"INVALID_MATCH_ID"`) {
@@ -77,7 +77,7 @@ func TestMatchDetailsErrorResponses(t *testing.T) {
 		{"id_invalido", matches.ErrInvalidMatchID, 400, "INVALID_MATCH_ID"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			handler := NewHandler(fakeHeroesClient{}, fakeMetaService{}, fakePlayersService{}, fakeMatchesService{err: test.err})
+			handler := NewHandler(fakeHeroesClient{}, fakeMetaService{}, fakePlayersService{}, fakeMatchesService{err: test.err}, fakeBuildsService{})
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/matches/1", nil))
 			var body struct {

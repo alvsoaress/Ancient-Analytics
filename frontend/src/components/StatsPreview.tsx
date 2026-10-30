@@ -1,5 +1,6 @@
 import { useApi } from '../api'
 import type { MetaResponse } from '../api'
+import { HeroLink } from './HeroLink'
 import { HeroPortrait } from './HeroPortrait'
 
 const percentage = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
@@ -55,7 +56,7 @@ export function StatsPreview({ portraits }: { portraits: Map<number, string> }) 
         {meta.status === 'error' ? (
           <>Destaque indisponível no momento. <button className="inline-button" type="button" onClick={retry}>Tentar novamente</button></>
         ) : top ? (
-          <><HeroPortrait src={portraits.get(top.heroId)} name={top.name} /> {top.name}, o herói mais escolhido em partidas profissionais · OpenDota</>
+          <><HeroLink heroId={top.heroId} name={top.name}><HeroPortrait src={portraits.get(top.heroId)} name={top.name} /></HeroLink> {top.name}, o herói mais escolhido em partidas profissionais · OpenDota</>
         ) : (
           <><span className="status-dot" /> Carregando o destaque do meta</>
         )}

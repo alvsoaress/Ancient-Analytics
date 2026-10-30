@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useApi } from '../api'
 import type { MetaResponse, Position } from '../api'
+import { HeroLink } from './HeroLink'
 import { HeroPortrait } from './HeroPortrait'
 import { ErrorState, LoadingState, Unavailable } from './RequestState'
 
@@ -74,7 +75,7 @@ export function MetaSection({ portraits }: { portraits: Map<number, string> }) {
             <tbody>{rows.map((hero, index) => (
               <tr key={hero.heroId}>
                 <td className="rank">{String(index + 1).padStart(2, '0')}</td>
-                <th scope="row"><span className="hero-cell"><HeroPortrait src={portraits.get(hero.heroId)} name={hero.name} /><span>{hero.name}</span></span></th>
+                <th scope="row"><HeroLink className="hero-cell" heroId={hero.heroId} name={hero.name}><HeroPortrait src={portraits.get(hero.heroId)} name={hero.name} /><span>{hero.name}</span></HeroLink></th>
                 <td className="rate-column"><RateBar value={hero.pickRate} max={maxPickRate} /></td>
                 <td className="rate-column"><RateBar value={hero.winRate} max={100} className="win-track" /></td>
                 {showKda && <td className="kda-column">{hero.kda === null ? <Unavailable /> : ratio.format(hero.kda)}</td>}

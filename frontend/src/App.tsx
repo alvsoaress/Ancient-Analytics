@@ -1,6 +1,9 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { portraitUrl, useApi } from './api'
 import type { Hero } from './api'
+import { parseHeroId } from './heroes'
+import { HeroBuildView } from './components/HeroBuildView'
+import { HeroSearch } from './components/HeroSearch'
 import { parseMatchId } from './matches'
 import { navigate, useSearchParam } from './navigation'
 import { parseAccountId } from './players'
@@ -16,20 +19,25 @@ import './App.css'
 function App() {
   const [heroes, retryHeroes] = useApi<Hero[]>('/api/heroes')
   const matchParam = useSearchParam('partida')
+  const heroParam = useSearchParam('heroi')
+  const heroId = parseHeroId(heroParam)
+  const positionParam = useSearchParam('posicao')
+  const [heroSearch, setHeroSearch] = useState('')
+  const isDetail = matchParam !== null || heroParam !== null
   const accountParam = useSearchParam('jogador')
   const parsedAccount = accountParam === null ? null : parseAccountId(accountParam)
   const highlightedAccount = parsedAccount && 'accountId' in parsedAccount ? parsedAccount.accountId : null
-  // Ao sair da página da partida para a inicial, a seção indicada no endereço (como #jogador) ainda não
+  // Ao sair de uma página de detalhes para a inicial, a seção indicada no endereço (como #jogador) ainda não
   // existia; depois de exibida, a página rola até ela.
-  const previousMatch = useRef(matchParam)
+  const previousDetail = useRef(isDetail)
   useEffect(() => {
-    if (previousMatch.current !== null && matchParam === null) {
+    if (previousDetail.current && !isDetail) {
       const target = window.location.hash ? document.getElementById(window.location.hash.slice(1)) : null
       if (target) target.scrollIntoView()
       else window.scrollTo(0, 0)
     }
-    previousMatch.current = matchParam
-  }, [matchParam])
+    previousDetail.current = isDetail
+  }, [isDetail])
   const heroesById = useMemo(() => new Map(heroes.status === 'success' ? heroes.data.map((hero) => [hero.id, hero] as const) : []), [heroes])
   const portraits = useMemo(() => {
     const entries = heroes.status === 'success' ? heroes.data.map((hero) => [hero.id, portraitUrl(hero)] as const) : []
@@ -39,18 +47,21 @@ function App() {
   return (
     <>
       <a className="skip-link" href="#conteudo">Pular para o conteúdo</a>
-      <Header prefix={matchParam === null ? '' : '/'} />
+      <Header prefix={isDetail ? '/' : ''} />
       <main id="conteudo">
         <ErrorBoundary>
         {matchParam !== null ? (
           <MatchView matchId={parseMatchId(matchParam)} heroes={heroesById} highlightedAccount={highlightedAccount} />
+        ) : heroParam !== null ? (
+          <HeroBuildView heroId={heroId} position={positionParam} hero={heroesById.get(heroId ?? 0)} />
         ) : (
           <>
             <section className="hero section-width" id="inicio" aria-labelledby="hero-title">
               <div className="hero-copy">
-                <p className="eyebrow"><span className="status-dot" /> Estatísticas. Meta. Partidas. Dota 2.</p>
+                <p className="eyebrow"><span className="status-dot" /> Estatísticas. Meta. Builds. Dota 2.</p>
                 <h1 id="hero-title">Menos achismo.<br /><span>Mais jogo.</span></h1>
                 <p className="hero-description">Entenda o meta. Conheça seus números.<br />Veja o jogo por outra perspectiva.</p>
+                <HeroSearch heroes={heroes} query={heroSearch} onChange={setHeroSearch} onRetry={retryHeroes} />
                 <div className="hero-actions">
                   <a className="button button-primary" href="#meta">Explorar o meta <span aria-hidden="true">↗</span></a>
                   <a className="button button-secondary" href="#jogador">Consultar jogador <svg className="button-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.5 15.5 5 5" /></svg></a>
@@ -76,13 +87,13 @@ function App() {
                 <div><h3>Detalhes da partida</h3><p>De cada lado do mapa: times, resultado e os números de cada jogador.</p></div>
               </article>
             </section>
-            <HeroCatalog heroes={heroes} onRetry={retryHeroes} />
+            <HeroCatalog heroes={heroes} onRetry={retryHeroes} search={heroSearch} onSearch={setHeroSearch} />
           </>
         )}
         </ErrorBoundary>
       </main>
       <footer className="footer section-width">
-        <a className="footer-brand" href={matchParam === null ? '#inicio' : '/'} onClick={(event) => { if (matchParam !== null) { event.preventDefault(); navigate('/') } }}>Ancient Analytics <span aria-hidden="true">↗</span></a>
+        <a className="footer-brand" href={isDetail ? '/' : '#inicio'} onClick={(event) => { if (isDetail) { event.preventDefault(); navigate('/') } }}>Ancient Analytics <span aria-hidden="true">↗</span></a>
         <p>Feito para quem quer entender o jogo.</p>
         <a href="https://www.opendota.com/" target="_blank" rel="noreferrer">Fonte de dados: OpenDota <span aria-hidden="true">↗</span></a>
       </footer>
